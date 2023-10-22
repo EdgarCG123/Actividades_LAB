@@ -1,0 +1,133 @@
+void app_main()
+{
+    static float ax_noisy, ay_noisy, az_noisy;
+    static float ax_ant=0.0, ay_ant=0.0, az_ant=1.0;
+    static float ax_filtered, ay_filtered, az_filtered;
+
+    mpu6050_dev_t dev = { 0 };
+
+    // Initialize i2c communication with sensor device
+    i2cdev_init();
+    mpu6050_init_desc(&dev, ADDR, 0, CONFIG_EXAMPLE_SDA_GPIO, CONFIG_EXAMPLE_SCL_GPIO);
+
+    // Verify sensor device is available form communication
+    while (1)
+    {
+        esp_err_t res = i2c_dev_probe(&dev.i2c_dev, I2C_DEV_WRITE);
+        if (res == ESP_OK)
+        {
+            printf("Found MPU60x0 device\n");
+            break;
+        }
+        printf("MPU60x0 not found\n");
+        vTaskDelay(1000/portTICK_PERIOD_MS);
+    }
+
+    // Initialize sensor device
+    mpu6050_init(&dev);
+    vTaskDelay(100/portTICK_PERIOD_MS);
+    mpu6050_rotation_t rotation = { 0 };
+    mpu6050_acceleration_t accel = { 0 };
+
+    // ---------------------------------------------------------------------------------
+    // ---- ADD YOUR CODE IN THIS SECTION TO OBTAIN ax_offset, ay_offset, az_offset ----
+    // ---------------------------------------------------------------------------------
+    // Conduct initial 100 readings and obtain their average value to eliminate
+    //  offset from measurements, include a sampling period delay after each read
+    // You may use a for loop
+    // ---------------------------------------------------------------------------------
+    vTaskDelay(2000/portTICK_PERIOD_MS);
+    for(int i=0;i<=100;i++){
+    	mpu6050_get_motion(&dev, &accel, &rotation);
+        promx+=accel.x;
+        promy+=accel.y;
+        promz+=accel.z;
+        vTaskDelay(20/portTICK_PERIOD_MS);
+    }
+    promx=promx/100;
+    promy=promy/100;
+    promz=promz/100;
+
+
+
+
+    // Main loop to conduct readings
+    while (1)
+    {
+
+        // Obtain accelerometer (x,y,z) values in gravities, 1 gravity=9.8m/s^2
+        // Obtain gyroscope (x,y,z) values on grades/second
+        mpu6050_get_temperature(&dev, &temperature);
+        mpu6050_get_motion(&dev, &accel, &rotation);
+
+        //printf("**********************************************************************\n");
+        //printf("Acceleration: x=%.4f   y=%.4f   z=%.4f\n", accel.x, accel.y, accel.z);
+        //printf("Rotation:     x=%.4f   y=%.4f   z=%.4f\n", rotation.x, rotation.y, rotation.z);
+        //printf("Temperature:  %.1f\n", temperature);
+
+
+
+
+        // ---------------------------------------------------------------------------------
+        // ---- ADD/MODIFY CODE IN THIS SECTION TO ELIMINATE OFFSET                     ----
+        // ---------------------------------------------------------------------------------
+        // Eliminate offset from accelerometer readings
+        // ---------------------------------------------------------------------------------
+        ax_noisy=accel.x-promx;
+        ay_noisy=accel.y-promy;
+        az_noisy=accel.z-promz+1;
+
+        // ---------------------------------------------------------------------------------
+        // ---- ADD/MODIFY CODE IN THIS SECTION TO APPLY LOW PASS FILTER                ----
+        // ---------------------------------------------------------------------------------
+        // Apply low pass filter
+        // ---------------------------------------------------------------------------------
+        x_filtered=b*x_past + a*ax_noisy + a*x_pastread;
+        y_filtered=b*y_past + a*ay_noisy + a*y_pastread;
+        z_filtered=b*z_past + a*az_noisy + a*z_pastread;
+
+        x_past=x_filtered;
+        y_past=y_filtered;
+        z_past=z_filtered;
+
+        x_pastread=ax_noisy;
+        y_pastread=ay_noisy;
+        z_pastread=az_noisy;
+
+        // ---------------------------------------------------------------------------------
+        // ---- ADD/MODIFY CODE IN THIS SECTION TO OBTAIN INCLINATION ANGLE             ----
+        // ---------------------------------------------------------------------------------
+        // Calculate inclination angle with the accelerometer
+        // Obtained from:
+        // https://naylampmechatronics.com/blog/45_tutorial-mpu6050-acelerometro-y-giroscopio.html
+        //
+        // Inclination angle from noisy measurements
+        float ang_x_noisy=atan(ax_noisy/sqrt(pow(ay_noisy,2) + pow(az_noisy,2)))*(180.0/3.1416);
+        float ang_y_noisy=atan(ay_noisy/sqrt(pow(ax_noisy,2) + pow(az_noisy,2)))*(180.0/3.1416);
+        //
+        // Inclination angle from filtered measurements
+        float ang_x_filtered=atan(x_filtered/sqrt(pow(y_filtered,2) + pow(z_filtered,2)))*(180.0/3.1416);
+        float ang_y_filtered=atan(y_filtered/sqrt(pow(x_filtered,2) + pow(_filtered,2)))*(180.0/3.1416);
+
+        // ---------------------------------------------------------------------------------
+        // Plot section, uncomment only one plot in order to observe the values in the Arduino Plotter
+        // ---------------------------------------------------------------------------------
+
+        // Plot acceleration noisy readings in Arduino IDE Serial Plotter
+        //printf("9.81,%.4f,%.4f,%.4f\n",ax_noisy*9.81,ay_noisy*9.81,az_noisy*9.81);
+
+        printf("9.81,%.4f,%.4f\n",ax_noisy*9.81,x_filtered*9.81);
+
+
+
+        // Plot acceleration filtered values in Arduino IDE Serial Plotter
+        //printf("9.81,%.4f,%.4f,%.4f\n",ax_filtered*9.81,ay_filtered*9.81,az_filtered*9.81);
+
+        // Plot angles in Arduino IDE Serial Plotter
+        //printf("-90,90,%.4f,%.4f,%.4f,%.4f\n", ang_x_noisy, ang_y_noisy, ang_x_filtered, ang_y_filtered);
+
+
+        // Delay of 100 ms
+        vTaskDelay(40/portTICK_PERIOD_MS);
+    }
+}
